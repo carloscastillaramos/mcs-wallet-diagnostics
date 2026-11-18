@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcs-wallet-diagnostics
+spec:
+  type: ClusterIP
+  selector:
+    app: mcs-wallet-diagnostics
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

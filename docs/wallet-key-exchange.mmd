@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    participant W as INJI Wallet
+    participant M as mcs-wallet-diagnostics
+    participant S as Secret RSA del MTC
+    participant O as PostgreSQL en AWS
+
+    Note over W,O: Prerrequisito: ECDSA privada en Wallet y ECDSA pública enrolada en PostgreSQL
+    M->>S: Al iniciar, cargar RSA privada por KID
+    S-->>M: RSA privada solo en memoria del pod
+    W->>W: Guardar diagnósticos en MMKV cifrado offline
+    W->>M: GET /api/v1/diagnostics/keys (HTTPS)
+    M-->>W: JWKS con RSA pública y activeKid
+    W->>W: Cifrar eventos con JWE RSA-OAEP-256 + AES-256-GCM
+    W->>W: Firmar cuerpo JWE con privada ECDSA P-256
+    W->>M: POST /batches con JWE + headers ECDSA
+    M->>O: Consultar ECDSA pública de instalación
+    O-->>M: ECDSA pública vigente
+    M->>M: Verificar ECDSA, timestamp y nonce
+    M->>M: Descifrar JWE con RSA privada, validar eventos
+    M->>O: Transacción nonce + eventos, unicidad
+    O-->>M: COMMIT
+    M-->>W: HTTP 202 + ACK de eventos
+    W->>W: Eliminar solo eventos confirmados del MMKV
+
+    Note over W,M: Si falla red o PostgreSQL: conservar cola y reintentar en silencio

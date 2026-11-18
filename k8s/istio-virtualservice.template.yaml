@@ -1,0 +1,18 @@
+# NON-APPLICABLE TEMPLATE: configure the existing approved Istio Gateway and HTTPS host.
+# Do not expose /api/v1/admin/** to the internet. Route only ingest + public JWKS.
+# Restrict public requests at gateway and rate-limit; admin stays ClusterIP-only.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: mcs-wallet-diagnostics-public
+spec:
+  hosts: [REPLACE_WITH_APPROVED_HTTPS_HOST]
+  gateways: [REPLACE_WITH_EXISTING_ISTIO_GATEWAY]
+  http:
+    - match:
+        - uri: {exact: /api/v1/diagnostics/batches}
+        - uri: {exact: /api/v1/diagnostics/keys}
+      route:
+        - destination:
+            host: mcs-wallet-diagnostics
+            port: {number: 8080}

@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcs-wallet-diagnostics
+  labels:
+    app: mcs-wallet-diagnostics
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: mcs-wallet-diagnostics
+  template:
+    metadata:
+      labels:
+        app: mcs-wallet-diagnostics
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: mcs-wallet-diagnostics
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: diagnostics
+          # Sustituir por la imagen firmada y homologada del registro MTC.
+          image: REPLACE_WITH_APPROVED_ECR_IMAGE_DIGEST
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Migraciones ejecutadas por Job/DBA, no por cada replica de la API.
+            - name: SPRING_FLYWAY_ENABLED
+              value: "false"
+            - name: MCS_ENCRYPTION_KEYS_DIRECTORY
+              value: /run/secrets/mcs-wallet-diagnostics/jwe
+            - name: MCS_ENCRYPTION_ACTIVE_KID
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-jwe
+                  key: active-kid
+            - name: MCS_MAX_DECRYPTED_BYTES
+              value: "65536"
+            # Logs locales rotativos por pod; CloudWatch recoge stdout/stderr.
+            # Si MCS_LOG_FILE falta fuera de Kubernetes, solo se escribe en consola.
+            - name: MCS_LOG_FILE
+              value: /var/log/mcs-wallet-diagnostics/application.log
+            - name: MCS_LOG_MAX_FILE_SIZE
+              value: 10MB
+            - name: MCS_LOG_MAX_HISTORY
+              value: "7"
+            - name: MCS_LOG_TOTAL_SIZE_CAP
+              value: 96MB
+            - name: MCS_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: jdbc-url
+            - name: MCS_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: username
+            - name: MCS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: password
+            - name: MCS_ADMIN_JWT_ISSUER_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: jwt-issuer-uri
+            - name: MCS_ADMIN_JWT_JWK_SET_URI
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: jwt-jwk-set-uri
+            - name: MCS_PROVIDER_SYNC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: provider-sync-client-id
+                  optional: true
+            - name: MCS_ADMIN_JWT_AUDIENCE
+              valueFrom:
+                secretKeyRef:
+                  name: mcs-wallet-diagnostics-config
+                  key: jwt-audience
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: temp
+              mountPath: /tmp
+            - name: decryption-keys
+              mountPath: /run/secrets/mcs-wallet-diagnostics/jwe
+              readOnly: true
+            - name: operational-logs
+              mountPath: /var/log/mcs-wallet-diagnostics
+            - name: rds-ca
+              mountPath: /run/trust/rds
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 2
+      volumes:
+        # AWS: provisionar por secret manager/External Secrets; nunca incluir PEM en Git.
+        # Institución: provisión segura con External Secrets/HSM y rotación.
+        # Contiene active-kid y archivos <kid>.pem en formato PKCS#8.
+        # Ninguna llave privada se incluye en el repositorio ni en la imagen.
+        - name: decryption-keys
+          secret:
+            secretName: mcs-wallet-diagnostics-jwe
+            defaultMode: 288
+        - name: temp
+          emptyDir:
+            sizeLimit: 32Mi
+        # Volumen efímero exclusivo de este pod: no compartir archivos entre réplicas.
+        # La retención entre recreaciones corresponde al colector central de logs MTC.
+        - name: operational-logs
+          emptyDir:
+            sizeLimit: 128Mi
+        - name: rds-ca
+          configMap:
+            name: aws-rds-ca-bundle

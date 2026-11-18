@@ -1,0 +1,89 @@
+spring:
+  application:
+    name: mcs-wallet-diagnostics
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${MCS_DB_URL}
+    username: ${MCS_DB_USERNAME}
+    password: ${MCS_DB_PASSWORD}
+    hikari:
+      minimum-idle: ${MCS_DB_POOL_MIN_IDLE:1}
+      maximum-pool-size: ${MCS_DB_POOL_MAX_SIZE:8}
+      connection-timeout: 3000
+      validation-timeout: 2000
+      data-source-properties:
+        tcpKeepAlive: true
+        connectTimeout: 5
+        socketTimeout: 20
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    create-schemas: false
+    default-schema: wallet_diagnostics
+    schemas: wallet_diagnostics
+    table: flyway_schema_history
+    locations: classpath:db/migration
+  jdbc:
+    template:
+      query-timeout: ${MCS_JDBC_QUERY_TIMEOUT:5s}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${MCS_ADMIN_JWT_ISSUER_URI}
+          jwk-set-uri: ${MCS_ADMIN_JWT_JWK_SET_URI}
+          audiences: ${MCS_ADMIN_JWT_AUDIENCE}
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+server:
+  port: ${MCS_HTTP_PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  tomcat:
+    threads:
+      max: ${MCS_HTTP_MAX_THREADS:80}
+    max-connections: ${MCS_HTTP_MAX_CONNECTIONS:500}
+    connection-timeout: 5s
+management:
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+  endpoints:
+    web:
+      exposure:
+        include: health
+logging:
+  # Sin MCS_LOG_FILE se mantiene solo stdout/stderr (kubectl logs).
+  # En el Deployment MTC se monta un volumen privado por pod para el archivo.
+  file:
+    name: ${MCS_LOG_FILE:}
+  logback:
+    rollingpolicy:
+      max-file-size: ${MCS_LOG_MAX_FILE_SIZE:10MB}
+      max-history: ${MCS_LOG_MAX_HISTORY:7}
+      total-size-cap: ${MCS_LOG_TOTAL_SIZE_CAP:96MB}
+      clean-history-on-start: false
+  level:
+    root: ${MCS_LOG_LEVEL:INFO}
+    pe.gob.mtc.wallet.diagnostics: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.springframework.jdbc: WARN
+    com.zaxxer.hikari: WARN
+mcs:
+  diagnostics:
+    # El sobre JWE es mayor que el JSON claro por Base64URL + RSA.
+    maximum-body-bytes: ${MCS_MAX_BODY_BYTES:131072}
+    maximum-events-per-batch: ${MCS_MAX_EVENTS_PER_BATCH:50}
+    maximum-clock-skew-seconds: ${MCS_CLOCK_SKEW_SECONDS:300}
+    maximum-event-age-days: ${MCS_MAX_EVENT_AGE_DAYS:8}

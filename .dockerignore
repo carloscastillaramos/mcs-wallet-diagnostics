@@ -1,0 +1,12 @@
+# Multi-stage build copies only Maven descriptor + sources; never transfer secrets.
+*
+!Dockerfile
+!pom.xml
+!src/
+!src/**
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.jks
+**/.env
+**/.env.*

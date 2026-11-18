@@ -1,0 +1,11 @@
+# OPTIONAL AWS EKS enforcement template, not apply-ready: complete source
+# namespace/pod selectors, DNS egress, PostgreSQL RDS IP blocks and HTTPS egress.
+# Confirm AWS VPC CNI Network Policy or installed CNI enforces policies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcs-wallet-diagnostics-default-deny
+spec:
+  podSelector:
+    matchLabels: {app: mcs-wallet-diagnostics}
+  policyTypes: [Ingress, Egress]
